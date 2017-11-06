@@ -5,17 +5,19 @@ Allows an Arduino to act as midi device through 2nd (firmware-only) usb port.
 # V-USB
 
 [V-USB](http://www.obdev.at/products/vusb/index.html) by Objective Development Software GmbH
-	http://www.obdev.at/products/vusb/index.html
+
+http://www.obdev.at/products/vusb/index.html
 	
 # Circuit
-![Arduino & V-USB](https://github.com/TechFactoryHU/vusb-arduino/circuits/arduino_vusb_dev.png)
-![Arduino & V-USB](https://github.com/TechFactoryHU/vusb-arduino/circuits/arduino_vusb_dev_schematic.png)
+![Arduino & V-USB](https://github.com/TechFactoryHU/vusb-arduino/blob/master/circuits/arduino_vusb_dev.png)
+![Arduino & V-USB](https://github.com/TechFactoryHU/vusb-arduino/blob/master/circuits/arduino_vusb_dev_schematic.png)
 
 Default config:
-	D- = Pin 7
-	D+ = Pin 2
+- D- = Pin 7
+- D+ = Pin 2
 
-You can change default values in src/usbconfig.h file. For more information please visit [Obdev's site] (https://www.obdev.at/products/vusb/index.html)
+You can change default values in src/usbconfig.h file. For more information please visit 
+[Obdev's site] (https://www.obdev.at/products/vusb/index.html)
 	
 
 # Midi sample
