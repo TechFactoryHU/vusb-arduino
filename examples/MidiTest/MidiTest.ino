@@ -8,7 +8,7 @@ void setup() {
     VUsbMidi.OnMsg(OnMidiMessage);
     
     Serial.println("VUSB begin");
-    VUsbMidi.begin();
+    VUsbMidi.begin(false);
     
 }
 

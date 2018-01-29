@@ -16,8 +16,8 @@ Default config:
 - D- = Pin 7
 - D+ = Pin 2
 
-You can change default values in src/usbconfig.h file. For more information please visit 
-[Obdev's site] (https://www.obdev.at/products/vusb/index.html)
+You can change default values in src/usbconfig.h file. For more information please visit V-USB website.
+
 	
 
 # Midi sample
@@ -29,7 +29,7 @@ void setup() {
 	Serial.begin(115200);
 	//setup midi msg callback
 	VUsbMidi.OnMsg(OnMidiMessage);
-    VUsbMidi.begin();
+    VUsbMidi.begin(false);
 }
 
 void loop() {

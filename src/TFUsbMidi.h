@@ -61,6 +61,8 @@ class TFUsbMidi {
 		uint8_t _bufftop;
 		uint8_t _bufflast;
 		uint8_t _buffsize;
+		bool _calibrate_osc = false;
+		bool _optimalize_osc = false;
 		
 		uint8_t buffNext(uint8_t value);
 		uint8_t buffPush(uint8_t *a);
@@ -74,15 +76,16 @@ class TFUsbMidi {
 	public:
 		TFUsbMidi (void);
 		void OnMsg(void (*onMsgCallback)(TFMidiMessage));
+		void OnUSBReset(void);
+		void calibrateOSC(void);
 		
-		void begin();
+		void begin(bool calibrate_osc = false);
 		void refresh();
 		void read(uchar *data, uchar len);
 		
 		void NoteOn(byte ch, byte note, byte velocity);
 		void NoteOff(byte ch, byte note);
 		void ControlChange(byte ch, byte num, byte value);
-		
 		
 		void write(TFMidiMessage msg);
 		void write(byte *buffer, byte size);

@@ -8,163 +8,7 @@
 
 #include "vusb/usbdrv.h"
 #include "TFUsbMidi.h"
- 
-TFUsbMidi::TFUsbMidi() {
-	_bufftop = 0;
-	_bufflast = 0;
-	_buffsize = 0;
-};
 
-void TFUsbMidi::begin() {
-	uchar uCalVal, i;
-	
-	do {} while (!eeprom_is_ready());
-	uCalVal = eeprom_read_byte(0);
-    if (uCalVal != 0xff) OSCCAL = uCalVal;
-
-    usbInit();
-    usbDeviceDisconnect();  // enforce re-enumeration, do this while interrupts are disabled!
-    
-    i = 0;
-    while (--i) {             // fake USB disconnect for > 250 ms
-        wdt_reset();
-        _delay_ms(1);
-    }
-    
-    usbDeviceConnect();
-    sei();
-};
-
-uint8_t TFUsbMidi::buffNext(uint8_t value) {
-	return (value + VUSBMIDI_RINGBUFFER_ESIZE) % (VUSBMIDI_RINGBUFFER_ESIZE*VUSBMIDI_RINGBUFFER_SIZE);
-};
-
-uint8_t TFUsbMidi::buffPush(uint8_t *p) {
-	if(buffNext(_bufflast) == _bufftop){
-		return 0;
-	}
-	buffer[_bufflast] = *p;
-	buffer[_bufflast+1] = *(p+1);
-	buffer[_bufflast+2] = *(p+2);
-	buffer[_bufflast+3] = *(p+3);
-	_bufflast = buffNext(_bufflast);
-	_buffsize ++;
-	return 1;
-};
-
-uint8_t* TFUsbMidi::buffPop(void) {
-	uint8_t *res = (uint8_t *)0;
-	if(_bufftop != _bufflast){
-		res = &(buffer[_bufftop]);
-		_bufftop = buffNext(_bufftop);
-		_buffsize --;
-	}
-	return res;
-};
-
-TFMidiType TFUsbMidi::getMessageType(byte *p) {
-	TFMidiType type = InvalidType;
-	switch ((*(p + 1) & 0xf0)) {
-		case TFMidiType::NoteOn:				type = TFMidiType::NoteOn;	break;
-		case TFMidiType::NoteOff:				type = TFMidiType::NoteOff;	break;
-		case TFMidiType::ControlChange:			type = TFMidiType::ControlChange;	break;
-		case TFMidiType::AfterTouchPoly:		type = TFMidiType::AfterTouchPoly;	break;
-		case TFMidiType::ProgramChange:			type = TFMidiType::ProgramChange;	break;
-		case TFMidiType::AfterTouchChannel:		type = TFMidiType::AfterTouchChannel;	break;
-		case TFMidiType::PitchBend:				type = TFMidiType::PitchBend;	break;
-		case TFMidiType::SystemExclusive:		type = TFMidiType::SystemExclusive;	break;
-		case TFMidiType::TimeCodeQuarterFrame:	type = TFMidiType::TimeCodeQuarterFrame;	break;
-		case TFMidiType::SongPosition:			type = TFMidiType::SongPosition;	break;
-		case TFMidiType::SongSelect:			type = TFMidiType::SongSelect;	break;
-		case TFMidiType::TuneRequest:			type = TFMidiType::TuneRequest;	break;
-		case TFMidiType::Clock:					type = TFMidiType::Clock;	break;
-		case TFMidiType::Start:					type = TFMidiType::Start;	break;
-		case TFMidiType::Continue:				type = TFMidiType::Continue;	break;
-		case TFMidiType::Stop:					type = TFMidiType::Stop;	break;
-		case TFMidiType::ActiveSensing:			type = TFMidiType::ActiveSensing;	break;
-		case TFMidiType::SystemReset:			type = TFMidiType::SystemReset;	break;
-		case TFMidiType::InvalidType:			type = TFMidiType::InvalidType;	break;
-	}
-	return type;
-};
-
-void TFUsbMidi::processMessage() {
-	uint8_t *pbuf;
-	TFMidiMessage message = {};
-	message.type = InvalidType;
-	if (_buffsize>0) {
-		pbuf = buffPop();
-		message.type = getMessageType(pbuf);
-		if (message.type !=  InvalidType) {
-			message.channel = *(pbuf+1)&0x0f;
-			message.data1 = *(pbuf+2)&0x7f;
-			message.data2 = *(pbuf+3)&0x7f;
-			
-			if (_onMsgCallback != NULL) {
-				_onMsgCallback(message);
-			}
-		}
-	}
-};
-
-void TFUsbMidi::OnMsg(void (*onMsgCallback)(TFMidiMessage)) {
-	_onMsgCallback = onMsgCallback;
-};
-
-void TFUsbMidi::refresh() {
-	processMessage();
-	usbPoll();	
-};
-
-void TFUsbMidi::read(uchar *data, uchar len) {
-	cli();
-	buffPush(data);
-	if (len > 4) {
-		buffPush(data+4);
-	}
-	sei();
-};
-
-void TFUsbMidi::NoteOn(byte ch, byte note, byte velocity) {
-	TFMidiMessage msg;
-	msg.type = (velocity == 0) ? TFMidiType::NoteOff : TFMidiType::NoteOn;
-	msg.channel = ch;
-	msg.data1 = note;
-	msg.data2 = velocity;
-	write(msg);
-};
-
-void TFUsbMidi::NoteOff(byte ch, byte note) {
-	NoteOn(ch,note,0);
-};
-
-void TFUsbMidi::ControlChange(byte ch, byte num, byte val) {
-	TFMidiMessage msg;
-	msg.type = TFMidiType::ControlChange;
-	msg.channel = ch;
-	msg.data1 = num;
-	msg.data2 = val;
-	write(msg);
-};
-
-void TFUsbMidi::write(TFMidiMessage msg) {
-	byte buffer[4];
-	buffer[0] = msg.type >> 4;
-	buffer[1] = msg.type | msg.channel;
-	buffer[2] = 0x7f & msg.data1;
-	buffer[3] = (msg.data2 == 0) ? 0 : 0x7f & msg.data2;
-	write(buffer,4);
-};
-
-void TFUsbMidi::write(byte *buffer, byte size) {
-	while (!usbInterruptIsReady()) {
-		usbPoll();
-	}
-	usbSetInterrupt(buffer, size);
-};
-
-
-TFUsbMidi VUsbMidi = TFUsbMidi();
 
 /* ------------------------------------------------------------------------- */
 /* ----------------------------- USB interface ----------------------------- */
@@ -374,33 +218,11 @@ usbMsgLen_t usbFunctionSetup(uchar data[8]) {
 
 uchar usbFunctionRead(uchar *data, uchar len)
 {
-
-  Serial.println("usbRead");
-  Serial.print(data[0], HEX);
-  Serial.print("\t");
-  Serial.print(data[1], HEX);
-  Serial.print("\t");
-  Serial.print(data[2], HEX);
-  Serial.print("\t");
-  Serial.print(data[3], HEX);
-  Serial.print("\t");
-  Serial.print(data[4], HEX);
-  Serial.print("\t");
-  Serial.print(data[5], HEX);
-  Serial.print("\t");
-  Serial.print(data[6], HEX);
-  Serial.print("\t");
-  Serial.print(data[7], HEX);
-  Serial.println();
-	
-
-
 	return 7;
 }
 
 uchar usbFunctionWrite(uchar * data, uchar len)
 {
-  Serial.println("usbFunctionWrite");
   return 1;
 }
 
@@ -408,7 +230,6 @@ void usbFunctionWriteOut(uchar *data, uchar len)
 {
 	VUsbMidi.read(data, len);
 }
-
 
 /* ------------------------------------------------------------------------- */
 /* ------------------------ Oscillator Calibration ------------------------- */
@@ -425,6 +246,7 @@ void usbFunctionWriteOut(uchar *data, uchar len)
  * the 12 MHz clock! Use the RC oscillator calibrated to 12 MHz for
  * experimental purposes only!
  */
+ 
 static void calibrateOscillator(void)
 {
 	uchar       step = 128;
@@ -468,11 +290,12 @@ both regions.
 
 void hadUsbReset(void)
 {
-	cli();
+	VUsbMidi.OnUSBReset();
+	/*cli();
 	calibrateOscillator();
-	sei();
-    eeprom_write_byte(0, OSCCAL); 
-     //store the calibrated value in EEPROM byte 0
+	sei();*/
+   //eeprom_write_byte(0, OSCCAL); 
+   //store the calibrated value in EEPROM byte 0
 }
 
 
@@ -482,4 +305,179 @@ void hadUsbReset(void)
 
 
 
+TFUsbMidi::TFUsbMidi() {
+	_bufftop = 0;
+	_bufflast = 0;
+	_buffsize = 0;
+	_optimalize_osc = false;
+	_calibrate_osc = false;
+};
 
+void TFUsbMidi::begin(bool cal_osc) {
+	uchar i;
+	_calibrate_osc = cal_osc;
+	// turn off timer0
+	//TIMSK0&=!(1<<TOIE0);
+    wdt_enable(WDTO_1S);
+	
+    usbInit();
+    usbDeviceDisconnect();  // enforce re-enumeration, do this while interrupts are disabled!
+    
+    i = 0;
+    while(--i){             /* fake USB disconnect for > 250 ms */
+        wdt_reset();
+        _delay_ms(1);
+    }
+   
+    usbDeviceConnect();
+    sei();
+};
+
+uint8_t TFUsbMidi::buffNext(uint8_t value) {
+	return (value + VUSBMIDI_RINGBUFFER_ESIZE) % (VUSBMIDI_RINGBUFFER_ESIZE*VUSBMIDI_RINGBUFFER_SIZE);
+};
+
+uint8_t TFUsbMidi::buffPush(uint8_t *p) {
+	if(buffNext(_bufflast) == _bufftop){
+		return 0;
+	}
+	buffer[_bufflast] = *p;
+	buffer[_bufflast+1] = *(p+1);
+	buffer[_bufflast+2] = *(p+2);
+	buffer[_bufflast+3] = *(p+3);
+	_bufflast = buffNext(_bufflast);
+	_buffsize ++;
+	return 1;
+};
+
+uint8_t* TFUsbMidi::buffPop(void) {
+	uint8_t *res = (uint8_t *)0;
+	if(_bufftop != _bufflast){
+		res = &(buffer[_bufftop]);
+		_bufftop = buffNext(_bufftop);
+		_buffsize --;
+	}
+	return res;
+};
+
+TFMidiType TFUsbMidi::getMessageType(byte *p) {
+	TFMidiType type = InvalidType;
+	switch ((*(p + 1) & 0xf0)) {
+		case TFMidiType::NoteOn:				type = TFMidiType::NoteOn;	break;
+		case TFMidiType::NoteOff:				type = TFMidiType::NoteOff;	break;
+		case TFMidiType::ControlChange:			type = TFMidiType::ControlChange;	break;
+		case TFMidiType::AfterTouchPoly:		type = TFMidiType::AfterTouchPoly;	break;
+		case TFMidiType::ProgramChange:			type = TFMidiType::ProgramChange;	break;
+		case TFMidiType::AfterTouchChannel:		type = TFMidiType::AfterTouchChannel;	break;
+		case TFMidiType::PitchBend:				type = TFMidiType::PitchBend;	break;
+		case TFMidiType::SystemExclusive:		type = TFMidiType::SystemExclusive;	break;
+		case TFMidiType::TimeCodeQuarterFrame:	type = TFMidiType::TimeCodeQuarterFrame;	break;
+		case TFMidiType::SongPosition:			type = TFMidiType::SongPosition;	break;
+		case TFMidiType::SongSelect:			type = TFMidiType::SongSelect;	break;
+		case TFMidiType::TuneRequest:			type = TFMidiType::TuneRequest;	break;
+		case TFMidiType::Clock:					type = TFMidiType::Clock;	break;
+		case TFMidiType::Start:					type = TFMidiType::Start;	break;
+		case TFMidiType::Continue:				type = TFMidiType::Continue;	break;
+		case TFMidiType::Stop:					type = TFMidiType::Stop;	break;
+		case TFMidiType::ActiveSensing:			type = TFMidiType::ActiveSensing;	break;
+		case TFMidiType::SystemReset:			type = TFMidiType::SystemReset;	break;
+		case TFMidiType::InvalidType:			type = TFMidiType::InvalidType;	break;
+	}
+	return type;
+};
+
+void TFUsbMidi::processMessage() {
+	uint8_t *pbuf;
+	TFMidiMessage message = {};
+	message.type = InvalidType;
+	if (_buffsize>0) {
+		pbuf = buffPop();
+		if (pbuf != 0) {
+			message.type = getMessageType(pbuf);
+			if (message.type !=  InvalidType) {
+				message.channel = *(pbuf+1)&0x0f;
+				message.data1 = *(pbuf+2)&0x7f;
+				message.data2 = *(pbuf+3)&0x7f;
+				
+				if (_onMsgCallback != NULL) {
+					_onMsgCallback(message);
+				}
+			}
+		}
+	}
+};
+
+void TFUsbMidi::OnUSBReset(void) {
+	if (_calibrate_osc) {
+		calibrateOSC();
+		if (_optimalize_osc) { _calibrate_osc = true; }else {
+			_calibrate_osc = false;
+		};
+	}
+};
+
+void TFUsbMidi::calibrateOSC(void) {
+	cli();
+	calibrateOscillator();
+	sei();
+};
+
+void TFUsbMidi::OnMsg(void (*onMsgCallback)(TFMidiMessage)) {
+	_onMsgCallback = onMsgCallback;
+};
+
+void TFUsbMidi::refresh() {
+	wdt_reset();
+	processMessage();
+	usbPoll();	
+};
+
+void TFUsbMidi::read(uchar *data, uchar len) {
+	cli();
+	buffPush(data);
+	if (len > 4) {
+		buffPush(data+4);
+	}
+	sei();
+};
+
+void TFUsbMidi::NoteOn(byte ch, byte note, byte velocity) {
+	TFMidiMessage msg;
+	msg.type = (velocity == 0) ? TFMidiType::NoteOff : TFMidiType::NoteOn;
+	msg.channel = ch;
+	msg.data1 = note;
+	msg.data2 = velocity;
+	write(msg);
+};
+
+void TFUsbMidi::NoteOff(byte ch, byte note) {
+	NoteOn(ch,note,0);
+};
+
+void TFUsbMidi::ControlChange(byte ch, byte num, byte val) {
+	TFMidiMessage msg;
+	msg.type = TFMidiType::ControlChange;
+	msg.channel = ch;
+	msg.data1 = num;
+	msg.data2 = val;
+	write(msg);
+};
+
+void TFUsbMidi::write(TFMidiMessage msg) {
+	byte buffer[4];
+	buffer[0] = msg.type >> 4;
+	buffer[1] = msg.type | msg.channel;
+	buffer[2] = 0x7f & msg.data1;
+	buffer[3] = (msg.data2 == 0) ? 0 : 0x7f & msg.data2;
+	write(buffer,4);
+};
+
+void TFUsbMidi::write(byte *buffer, byte size) {
+	while (!usbInterruptIsReady()) {
+		usbPoll();
+	}
+	usbSetInterrupt(buffer, size);
+};
+
+
+TFUsbMidi VUsbMidi = TFUsbMidi();
