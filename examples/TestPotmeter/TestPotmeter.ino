@@ -31,8 +31,8 @@ void loop() {
 }
 
 void OnPotmeterValueChanged(int analog, int value) { 
-   //map ADC 0-1024 value to 0-100 
-  int velocity = map(value, 0, 1024, 0, 100);
+   //map ADC 0-1024 value to 0-127 
+  int velocity = map(value, 0, 1024, 0, 127);
 
   if (analog == A0) {
       //channel, note, velocity
